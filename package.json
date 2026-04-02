@@ -1,5 +1,5 @@
 {
-  "name": "voon-chatbot",
+  "name": "voon_chatbot",
   "version": "1.0.0",
   "description": "Voon.fi asiakaspalvelu chatbot — AI-powered, Finnish, voice-enabled",
   "type": "module",
