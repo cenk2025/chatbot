@@ -45,10 +45,10 @@ function checkRateLimit(ip) {
 }
 
 function isAllowed(origin) {
-  if (!origin) return false; // origin yoksa reddet (dogrudan API cagrisi)
+  if (!origin) return false;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return true;
-  if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost/.test(origin)) return true;
+  if (/^https:\/\/[a-z0-9._-]+\.vercel\.app$/.test(origin)) return true;
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
   return false;
 }
 
@@ -99,7 +99,8 @@ module.exports = async function handler(req, res) {
 
   // Origin kontrolu
   if (!isAllowed(origin)) {
-    res.status(403).json({ error: 'Forbidden' });
+    console.error('[voon] Origin blocked:', origin);
+    res.status(403).json({ error: 'Forbidden', origin });
     return;
   }
 
@@ -176,8 +177,8 @@ module.exports = async function handler(req, res) {
   if (!geminiRes.ok) {
     var errText = '';
     try { errText = await geminiRes.text(); } catch (e) {}
-    console.error('[voon] Gemini error', geminiRes.status, errText.slice(0, 200));
-    res.status(502).json({ error: 'AI-palvelu ei vastannut odotetusti.' });
+    console.error('[voon] Gemini HTTP', geminiRes.status, errText.slice(0, 300));
+    res.status(502).json({ error: 'AI-palvelu ei vastannut odotetusti.', geminiStatus: geminiRes.status });
     return;
   }
 
