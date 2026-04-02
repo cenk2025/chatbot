@@ -7,31 +7,7 @@
   <meta name="theme-color" content="#0F172A">
   <title>Voon.fi Asiakaspalvelu</title>
 
-  <!--
-    Chatbot-konfiguraatio — EI API-avaimia tähän tiedostoon.
-    API-avain asetetaan Vercel Dashboard → Settings → Environment Variables.
-    Katso .env.example
-  -->
-  <script>
-    window.VOON_CHATBOT_CONFIG = {
-      // systemPrompt voidaan ylikirjoittaa tässä — ei arkaluonteista tietoa
-      systemPrompt: `Olet Voon.fi:n asiakaspalveluassistentti nimeltä "Voon Assistentti".
-
-OHJEET:
-- Vastaa aina suomeksi, kohteliaasti ja ytimekkäästi
-- Auta tilausten, laskutuksen, teknisten ongelmien ja tilin hallinnan asioissa
-- Kysy tarvittaessa tilausnumero tai sähköposti tunnistautumiseen
-- Jos ongelma on monimutkainen, tarjoa yhdistämistä ihmisasiakaspalvelijaan
-- Älä lupaa asioita, joita et voi varmistaa
-- Ole empaattinen ja kärsivällinen
-
-VOON.FI PALVELUT:
-- [Lisää yrityksen palvelukuvaus tähän]
-- Asiakaspalvelu: asiakaspalvelu@voon.fi
-- Puh: [numero]
-- Aukioloajat: Ma-Pe 9-17`,
-    };
-  </script>
+  <!-- Konfiguraatio: API-avain ja system prompt ovat Vercel-palvelimella, ei tarayicissa -->
 
   <link rel="stylesheet" href="styles/chatbot.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230F172A'/><path d='M20 65c0-16.569 13.431-30 30-30s30 13.431 30 30' stroke='%2322d3ee' stroke-width='6' stroke-linecap='round' fill='none'/><circle cx='35' cy='42' r='5' fill='%2322d3ee'/><circle cx='65' cy='42' r='5' fill='%2322d3ee'/></svg>">
