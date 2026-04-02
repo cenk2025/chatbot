@@ -71,6 +71,9 @@
 /* ─── Reset ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* hidden attribute her zaman kazanır — display:flex/grid ezmez */
+[hidden] { display: none !important; }
+
 /* ─── Root container ─────────────────────────────────────────────────────── */
 #voon-chatbot-root {
   font-family: var(--font);
