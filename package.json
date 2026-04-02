@@ -1,12 +1,8 @@
 {
   "name": "voon",
   "version": "1.0.0",
-  "description": "Voon.fi asiakaspalvelu chatbot — AI-powered, Finnish, voice-enabled",
-  "type": "module",
   "scripts": {
-    "dev": "npx serve . --port 3333 --cors",
-    "preview": "open http://localhost:3333/index.html"
+    "dev": "npx serve . --port 3333 --cors"
   },
-  "keywords": ["chatbot", "customer-service", "finnish", "ai", "voice"],
   "license": "UNLICENSED"
 }
