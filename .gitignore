@@ -1,0 +1,20 @@
+# Ympäristömuuttujat — EI KOSKAAN GitHubiin
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Riippuvuudet
+node_modules/
+
+# Build
+dist/
+.vercel/
+
+# macOS
+.DS_Store
+._*
+
+# Editor
+.vscode/
+*.swp

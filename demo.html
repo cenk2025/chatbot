@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voon Chatbot — Widget Demo</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #0F172A;
+      color: #F1F5F9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .page {
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #22d3ee, #0369A1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #F1F5F9; margin-bottom: 0.5rem; }
+    p { color: #94A3B8; line-height: 1.6; margin-bottom: 1.5rem; }
+    .hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(3,105,161,0.15);
+      border: 1px solid rgba(3,105,161,0.3);
+      border-radius: 9999px;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.875rem;
+      color: #22d3ee;
+      font-weight: 500;
+      animation: bounce 2s ease-in-out infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+    .arrow {
+      position: fixed;
+      bottom: 90px;
+      right: 90px;
+      font-size: 0.75rem;
+      color: #64748B;
+      transform: rotate(45deg);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="logo">voon.fi</div>
+    <h1>Asiakaspalvelu Chatbot Demo</h1>
+    <p>Widget-muotoinen asiakaspalveluchatbot upotettuna sivulle. Klikkaa oikeassa alakulmassa olevaa painiketta avataksesi chat.</p>
+    <span class="hint">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+      Avaa chat oikeasta alakulmasta
+    </span>
+  </div>
+
+  <!-- WIDGET INTEGRATION — kopioita osoitteen jälkeen omalle sivullesi -->
+  <script>
+    window.VOON_CHATBOT_CONFIG = {
+      systemPrompt: 'Olet Voon.fi:n asiakaspalveluassistentti. Vastaa aina suomeksi.',
+    };
+  </script>
+  <script src="widget.js" defer></script>
+</body>
+</html>
