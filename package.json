@@ -1,8 +1,0 @@
-{
-  "name": "voon",
-  "version": "1.0.0",
-  "scripts": {
-    "dev": "npx serve . --port 3333 --cors"
-  },
-  "license": "UNLICENSED"
-}

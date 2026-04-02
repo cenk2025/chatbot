@@ -11,9 +11,13 @@ node_modules/
 dist/
 .vercel/
 
-# macOS
+# macOS metadata — kesinlikle dahil edilmez
 .DS_Store
 ._*
+**/.DS_Store
+**/._ *
+.AppleDouble
+.LSOverride
 
 # Editor
 .vscode/
