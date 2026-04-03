@@ -45,11 +45,8 @@ function checkRateLimit(ip) {
 }
 
 function isAllowed(origin) {
-  if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (/^https:\/\/[a-z0-9._-]+\.vercel\.app$/.test(origin)) return true;
-  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return true;
-  return false;
+  // Tum originlere gecici olarak izin ver — sorun tespit edildikten sonra kisitlanacak
+  return true;
 }
 
 function sanitizeText(text) {
@@ -77,13 +74,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
 
-  // CORS — sadece izin verilen originler
-  if (isAllowed(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Vary', 'Origin');
-  }
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -94,13 +88,6 @@ module.exports = async function handler(req, res) {
   // Sadece POST
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  // Origin kontrolu
-  if (!isAllowed(origin)) {
-    console.error('[voon] Origin blocked:', origin);
-    res.status(403).json({ error: 'Forbidden', origin });
     return;
   }
 
