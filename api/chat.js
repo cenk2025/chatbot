@@ -1,10 +1,8 @@
 // Voon.fi Chatbot — Vercel Serverless Function
-// Google Gemini API proxy — API anahtari sadece sunucuda, tarayiciya hic ulasmaz.
+// OpenAI API proxy — API anahtari sadece sunucuda, tarayiciya hic ulasmaz.
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gpt-4o-mini';
 
-// System prompt sunucuda — tarayicidan gelene hic bakilmaz
 const SYSTEM_PROMPT = `Olet Voon.fi:n asiakaspalveluassistentti nimelta "Voon Assistentti".
 
 OHJEET:
@@ -21,16 +19,9 @@ VOON.FI PALVELUT:
 - Asiakaspalvelu: asiakaspalvelu@voon.fi
 - Aukioloajat: Ma-Pe 9-17`;
 
-// Sallitut originit
-const ALLOWED_ORIGINS = [
-  'https://voon.fi',
-  'https://www.voon.fi',
-];
-
-// Rate limiting — IP basina max istek (bellek tabanli, Vercel serverless icin yeterli)
 const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 dakika
-const RATE_LIMIT_MAX = 20;           // dakikada max 20 istek
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 20;
 
 function checkRateLimit(ip) {
   var now = Date.now();
@@ -40,78 +31,51 @@ function checkRateLimit(ip) {
     return true;
   }
   entry.count++;
-  if (entry.count > RATE_LIMIT_MAX) return false;
-  return true;
-}
-
-function isAllowed(origin) {
-  // Tum originlere gecici olarak izin ver — sorun tespit edildikten sonra kisitlanacak
-  return true;
+  return entry.count <= RATE_LIMIT_MAX;
 }
 
 function sanitizeText(text) {
   if (typeof text !== 'string') return '';
-  return text.slice(0, 2000).trim(); // max 2000 karakter
-}
-
-function toGeminiContents(messages) {
-  return messages
-    .filter(function(m) { return m.role === 'user' || m.role === 'assistant'; })
-    .slice(-20) // son 20 mesaj — kotu niyetli uzun context engeli
-    .map(function(m) {
-      return {
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: sanitizeText(m.content) }],
-      };
-    });
+  return text.slice(0, 2000).trim();
 }
 
 module.exports = async function handler(req, res) {
   var origin = req.headers['origin'] || '';
 
-  // Guvenlik headerlari her zaman gonderilir
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return;
   }
 
-  // Sadece POST
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
   // Rate limiting
-  var ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-  ip = ip.split(',')[0].trim();
+  var ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
   if (!checkRateLimit(ip)) {
     res.status(429).json({ error: 'Liian monta pyyntoa. Odota hetki.' });
     return;
   }
 
-  // API anahtari kontrol
-  var apiKey = process.env.GOOGLE_API_KEY;
+  // API anahtari
+  var apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.error('[voon] GOOGLE_API_KEY puuttuu');
+    console.error('[voon] OPENAI_API_KEY puuttuu');
     res.status(503).json({ error: 'Palvelu ei ole kaytettavissa. Yrita myohemmin.' });
     return;
   }
 
-  // Body parse
+  // Body
   var body = req.body || {};
-
-  // Mesaj dogrulama — systemPrompt tarayicidan KABUL EDILMEZ
   var messages = body.messages;
+
   if (!Array.isArray(messages) || messages.length === 0) {
     res.status(400).json({ error: 'Viestit puuttuvat.' });
     return;
@@ -122,7 +86,6 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // Mesaj formati dogrulama
   var valid = messages.every(function(m) {
     return m && typeof m.role === 'string' && typeof m.content === 'string';
   });
@@ -131,29 +94,35 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  var model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
-  var url = GEMINI_BASE + '/' + model + ':streamGenerateContent?key=' + apiKey + '&alt=sse';
+  var model = process.env.OPENAI_MODEL || DEFAULT_MODEL;
 
-  var geminiBody = {
-    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, // her zaman sunucu promptu
-    contents: toGeminiContents(messages),
-    generationConfig: {
-      maxOutputTokens: 1024,
-      temperature: 0.7,
-    },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-    ],
-  };
+  // OpenAI mesaj listesi — system prompt her zaman sunucudan
+  var openaiMessages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+  ].concat(
+    messages.slice(-20).map(function(m) {
+      return {
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: sanitizeText(m.content),
+      };
+    })
+  );
 
-  var geminiRes;
+  var openaiRes;
   try {
-    geminiRes = await fetch(url, {
+    openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiBody),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: openaiMessages,
+        max_tokens: 1024,
+        temperature: 0.7,
+        stream: true,
+      }),
     });
   } catch (err) {
     console.error('[voon] Fetch error:', err.message);
@@ -161,11 +130,11 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  if (!geminiRes.ok) {
+  if (!openaiRes.ok) {
     var errText = '';
-    try { errText = await geminiRes.text(); } catch (e) {}
-    console.error('[voon] Gemini HTTP', geminiRes.status, errText.slice(0, 300));
-    res.status(502).json({ error: 'AI-palvelu ei vastannut odotetusti.', geminiStatus: geminiRes.status });
+    try { errText = await openaiRes.text(); } catch (e) {}
+    console.error('[voon] OpenAI error', openaiRes.status, errText.slice(0, 300));
+    res.status(502).json({ error: 'AI-palvelu ei vastannut odotetusti.', status: openaiRes.status });
     return;
   }
 
@@ -174,7 +143,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('X-Accel-Buffering', 'no');
   res.status(200);
 
-  var reader = geminiRes.body.getReader();
+  var reader = openaiRes.body.getReader();
   var decoder = new TextDecoder();
   var buffer = '';
 
@@ -192,18 +161,11 @@ module.exports = async function handler(req, res) {
         if (!line.startsWith('data:')) continue;
         var raw = line.slice(5).trim();
         if (!raw || raw === '[DONE]') continue;
-
         try {
           var json = JSON.parse(raw);
-          var part = json.candidates &&
-                     json.candidates[0] &&
-                     json.candidates[0].content &&
-                     json.candidates[0].content.parts &&
-                     json.candidates[0].content.parts[0] &&
-                     json.candidates[0].content.parts[0].text;
-          if (part) {
-            var out = JSON.stringify({ choices: [{ delta: { content: part } }] });
-            res.write('data: ' + out + '\n\n');
+          var chunk = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+          if (chunk) {
+            res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: chunk } }] }) + '\n\n');
           }
         } catch (e) {}
       }
