@@ -1,6 +1,6 @@
 /**
- * Voon.fi Chatbot — Core Logic
- * Handles: conversation state, message rendering, UI events, session management
+ * Voon.fi Chatbot — Premium Core v2
+ * Glassmorphism · Rich Cards · Suggested Replies · Voice · 2026
  */
 
 import { sendMessage } from './api.js';
@@ -8,935 +8,670 @@ import { VoiceEngine, AudioVisualizer } from './voice.js';
 import { fi as t } from './i18n.js';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
-
 const MAX_HISTORY = 40;
-const SESSION_KEY = 'voon_chat_session';
-const PREFS_KEY = 'voon_chat_prefs';
+const SESSION_KEY  = 'voon_chat_v2';
+const PREFS_KEY    = 'voon_prefs_v2';
 
-const QUICK_ACTIONS = [
-  { key: 'order_status', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>`, label: t.quick_actions.order_status },
-  { key: 'billing', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`, label: t.quick_actions.billing },
-  { key: 'technical', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M20 12h-2M19.07 19.07l-1.41-1.41M12 20v-2M4.93 19.07l1.41-1.41M4 12H2M4.93 4.93l1.41 1.41"/></svg>`, label: t.quick_actions.technical },
-  { key: 'account', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`, label: t.quick_actions.account },
+// Category cards (welcome screen)
+const CATEGORIES = [
+  {
+    key: 'order', color: 'blue',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+    label: 'Tilausten hallinta', desc: 'Tila, muutos, peruutus',
+    msg: 'Haluaisin tarkistaa tilauksen tilan tai hallita tilauksiani.',
+  },
+  {
+    key: 'billing', color: 'purple',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>`,
+    label: 'Laskutus & maksut', desc: 'Laskut, maksutavat',
+    msg: 'Minulla on kysymys laskutuksesta tai maksuista.',
+  },
+  {
+    key: 'tech', color: 'cyan',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M20 12h-2M19.07 19.07l-1.41-1.41M12 20v-2M4.93 19.07l1.41-1.41M4 12H2M4.93 4.93l1.41 1.41"/></svg>`,
+    label: 'Tekninen tuki', desc: 'Ongelmat, vianmääritys',
+    msg: 'Tarvitsen apua teknisen ongelman kanssa.',
+  },
+  {
+    key: 'account', color: 'emerald',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    label: 'Tili & asetukset', desc: 'Profiili, salasana, tiedot',
+    msg: 'Haluaisin muuttaa tilin asetuksia tai tietoja.',
+  },
 ];
 
-const QUICK_MESSAGES = {
-  order_status: 'Haluaisin tarkistaa tilauksen tilan.',
-  billing: 'Minulla on kysymys laskutuksesta tai maksamisesta.',
-  technical: 'Minulla on tekninen ongelma, tarvitsen apua.',
-  account: 'Haluaisin hallita tiliäni.',
+// Context-aware suggested replies
+const SUGGESTED_REPLIES = {
+  default: [
+    { icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>`, label: 'Puhu ihmiselle', msg: 'Haluaisin puhua ihmisasiakaspalvelijalle.' },
+    { icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`, label: 'Tilauksen tila', msg: 'Mikä on tilaukseni tila?' },
+    { icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>`, label: 'Lasku kysymys', msg: 'Minulla on kysymys viimeisestä laskustani.' },
+  ],
+  order: [
+    { label: 'Peruuta tilaus', msg: 'Haluaisin peruuttaa tilaukseni.' },
+    { label: 'Muuta toimitusosoite', msg: 'Haluaisin muuttaa toimitustietoja.' },
+    { label: 'Tilaus myöhässä?', msg: 'Tilaukseni on myöhässä, mitä voin tehdä?' },
+  ],
+  billing: [
+    { label: 'Maksuvirhe', msg: 'Maksussa tapahtui virhe.' },
+    { label: 'Hyvitys', msg: 'Haluaisin pyytää hyvitystä.' },
+    { label: 'Lasku ei tule', msg: 'En ole saanut laskua.' },
+  ],
+  tech: [
+    { label: 'Ei toimi', msg: 'Palvelu ei toimi oikein.' },
+    { label: 'Kirjautuminen', msg: 'En pysty kirjautumaan sisään.' },
+    { label: 'Virheilmoitus', msg: 'Saan virheilmoituksen.' },
+  ],
 };
 
-// ─── Markdown → HTML ───────────────────────────────────────────────────────
-
-function renderMarkdown(text) {
+// ─── Markdown renderer ─────────────────────────────────────────────────────
+function md(text) {
   return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
-    .replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
-    .replace(/^#{1}\s+(.+)$/gm, '<h1>$1</h1>')
-    .replace(/^[\-*+]\s+(.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-    .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>')
+    .replace(/^#{3}\s+(.+)$/gm,'<h3>$1</h3>')
+    .replace(/^#{2}\s+(.+)$/gm,'<h2>$1</h2>')
+    .replace(/^#{1}\s+(.+)$/gm,'<h1>$1</h1>')
+    .replace(/^[-*+]\s+(.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g,'<ul>$1</ul>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
 }
 
-// ─── Time formatting ────────────────────────────────────────────────────────
-
-function formatTime(date) {
-  return date.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatRelativeTime(timestamp) {
-  const diff = Date.now() - timestamp;
-  if (diff < 60000) return t.time.just_now;
-  if (diff < 3600000) return t.time.minutes_ago.replace('{n}', Math.floor(diff / 60000));
-  if (diff < 7200000) return t.time.hour_ago;
-  return t.time.hours_ago.replace('{n}', Math.floor(diff / 3600000));
-}
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function ftime(d){ return d.toLocaleTimeString('fi-FI',{hour:'2-digit',minute:'2-digit'}); }
+function genId(){ return 'm_'+Date.now()+'_'+Math.random().toString(36).slice(2,6); }
 
 // ─── VoonChatbot ───────────────────────────────────────────────────────────
-
 export class VoonChatbot {
   constructor(rootEl) {
     this.root = typeof rootEl === 'string' ? document.querySelector(rootEl) : rootEl;
-    if (!this.root) throw new Error('Chatbot root element not found');
+    if (!this.root) throw new Error('Root element not found: ' + rootEl);
 
-    this.messages = [];      // { role, content, id, timestamp, status }
+    this.messages   = [];
     this.isStreaming = false;
-    this.abortController = null;
-    this.voiceEngine = null;
+    this.abortCtrl  = null;
+    this.voice      = null;
     this.visualizer = null;
-    this.prefs = this._loadPrefs();
-    this.isMinimized = false;
-    this.isExpanded = false;
-    this.unreadCount = 0;
-    this.ticketCounter = 1000;
+    this.prefs      = this._loadPrefs();
+    this.isMin      = false;
+    this.isExp      = false;
+    this.currentCtx = 'default'; // for suggested replies context
 
     this._render();
-    this._bindEvents();
+    this._bind();
     this._initVoice();
     this._restoreSession();
-    this._showWelcome();
+    if (this.messages.length === 0) this._showWelcome();
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
-
   _render() {
     this.root.innerHTML = `
-    <div class="voon-chatbot" id="voon-chatbot" role="dialog" aria-label="Voon.fi asiakaspalveluchat" aria-modal="true">
+    <div class="voon-chatbot" id="voon-chatbot" role="dialog" aria-label="Voon asiakaspalvelu" aria-modal="true">
 
       <!-- Header -->
       <header class="chat-header">
         <div class="chat-header-left">
           <div class="bot-avatar" aria-hidden="true">
-            <svg viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="16" fill="#0F172A"/>
-              <path d="M8 20c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="12" cy="14" r="1.5" fill="#22d3ee"/>
-              <circle cx="20" cy="14" r="1.5" fill="#22d3ee"/>
-              <rect x="13" y="7" width="6" height="3" rx="1.5" fill="#0369A1"/>
-              <line x1="16" y1="7" x2="16" y2="5" stroke="#0369A1" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="16" cy="4.5" r="1" fill="#22d3ee"/>
-            </svg>
+            <div class="bot-avatar-ring"></div>
+            <div class="bot-avatar-inner">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M8 21c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="12" cy="14" r="2" fill="#60a5fa"/>
+                <circle cx="20" cy="14" r="2" fill="#60a5fa"/>
+                <rect x="14" y="6" width="4" height="4" rx="2" fill="#3b82f6"/>
+                <line x1="16" y1="6" x2="16" y2="4" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="16" cy="3.5" r="1.2" fill="#60a5fa"/>
+              </svg>
+            </div>
           </div>
-          <div class="chat-header-info">
-            <h1 class="chat-title">${t.header.title}</h1>
+          <div>
+            <h1 class="chat-title">Voon Asiakaspalvelu</h1>
             <div class="chat-status">
-              <span class="status-dot" id="status-dot" aria-hidden="true"></span>
-              <span class="status-text" id="status-text">${t.header.status_online}</span>
+              <span class="status-dot" id="status-dot"></span>
+              <span class="status-text" id="status-text">Verkossa • Tekoälyavustettu</span>
             </div>
           </div>
         </div>
         <div class="chat-header-actions">
-          <button class="icon-btn" id="btn-voice-toggle" aria-label="${t.voice.voice_enabled}" title="${t.voice.voice_enabled}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+          <button class="icon-btn" id="btn-tts" aria-label="Puhesynteesi" title="Puhesynteesi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
           </button>
-          <button class="icon-btn" id="btn-new-chat" aria-label="${t.buttons.new_chat}" title="${t.buttons.new_chat}">
+          <button class="icon-btn" id="btn-new" aria-label="Uusi keskustelu" title="Uusi keskustelu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button class="icon-btn" id="btn-expand" aria-label="${t.buttons.expand}" title="${t.buttons.expand}">
+          <button class="icon-btn" id="btn-expand" aria-label="Laajenna" title="Laajenna">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
           </button>
-          <button class="icon-btn" id="btn-minimize" aria-label="${t.buttons.minimize}" title="${t.buttons.minimize}">
+          <button class="icon-btn" id="btn-min" aria-label="Pienennä" title="Pienennä">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
           </button>
         </div>
       </header>
 
       <!-- Messages -->
-      <main class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Viestihistoria">
+      <main class="chat-messages" id="chat-messages" role="log" aria-live="polite">
         <div class="messages-inner" id="messages-inner"></div>
       </main>
 
       <!-- Voice overlay -->
       <div class="voice-overlay" id="voice-overlay" hidden aria-hidden="true">
-        <canvas class="voice-visualizer" id="voice-canvas" width="200" height="60" aria-hidden="true"></canvas>
-        <p class="voice-status" id="voice-status-text">${t.voice.listening}</p>
-        <button class="btn-voice-cancel" id="btn-voice-cancel">${t.buttons.close}</button>
+        <div class="voice-orb" id="voice-orb" role="button" aria-label="Lopeta kuuntelu">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <canvas class="voice-visualizer" id="voice-canvas" width="220" height="56" aria-hidden="true"></canvas>
+        <p class="voice-status-text" id="voice-status-text">Kuuntelee...</p>
+        <p class="voice-transcript" id="voice-transcript"></p>
+        <button class="btn-voice-cancel" id="btn-voice-cancel">Peruuta</button>
       </div>
 
-      <!-- Agent handoff panel -->
-      <div class="handoff-panel" id="handoff-panel" hidden>
-        <div class="handoff-inner">
-          <svg class="handoff-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-          <h2>${t.handoff.title}</h2>
-          <p id="handoff-message">${t.handoff.leave_message}</p>
-          <form class="handoff-form" id="handoff-form" novalidate>
+      <!-- Handoff overlay -->
+      <div class="overlay-panel" id="handoff-panel" hidden>
+        <div class="overlay-panel-inner">
+          <div class="overlay-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <h2>Yhdistetään asiakaspalvelijaan</h2>
+          <p>Jätä tietosi, niin otamme sinuun yhteyttä mahdollisimman pian.</p>
+          <form id="handoff-form" novalidate>
             <div class="form-group">
-              <label for="handoff-name" class="form-label">Nimi</label>
-              <input type="text" id="handoff-name" class="form-input" placeholder="${t.handoff.name_placeholder}" autocomplete="name" required>
+              <label for="hf-name" class="form-label">Nimi</label>
+              <input id="hf-name" class="form-input" type="text" placeholder="Sinun nimesi" autocomplete="name" required>
             </div>
             <div class="form-group">
-              <label for="handoff-email" class="form-label">Sähköposti</label>
-              <input type="email" id="handoff-email" class="form-input" placeholder="${t.handoff.email_placeholder}" autocomplete="email" required>
+              <label for="hf-email" class="form-label">Sähköposti</label>
+              <input id="hf-email" class="form-input" type="email" placeholder="sinun@sahkoposti.fi" autocomplete="email" required>
             </div>
             <div class="form-group">
-              <label for="handoff-msg" class="form-label">Viesti</label>
-              <textarea id="handoff-msg" class="form-input form-textarea" rows="3" placeholder="Kuvaile ongelmaasi..."></textarea>
+              <label for="hf-msg" class="form-label">Viesti</label>
+              <textarea id="hf-msg" class="form-input form-textarea" rows="3" placeholder="Kuvaile ongelmasi lyhyesti..."></textarea>
             </div>
             <div class="handoff-actions">
-              <button type="button" class="btn btn-secondary" id="btn-handoff-cancel">${t.handoff.cancel}</button>
-              <button type="submit" class="btn btn-primary">${t.handoff.submit}</button>
+              <button type="button" class="btn btn-secondary" id="btn-hf-cancel">Peruuta</button>
+              <button type="submit" class="btn btn-primary">Lähetä</button>
             </div>
           </form>
         </div>
       </div>
 
-      <!-- Satisfaction panel -->
-      <div class="satisfaction-panel" id="satisfaction-panel" hidden>
-        <p class="satisfaction-question">${t.satisfaction.question}</p>
-        <div class="satisfaction-stars" role="group" aria-label="Arvio">
-          ${[1,2,3,4,5].map(n => `
-            <button class="star-btn" data-rating="${n}" aria-label="${n} tähteä" title="${[t.satisfaction.terrible,t.satisfaction.bad,t.satisfaction.ok,t.satisfaction.good,t.satisfaction.excellent][n-1]}">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            </button>
-          `).join('')}
+      <!-- Satisfaction overlay -->
+      <div class="overlay-panel" id="satisfaction-panel" hidden>
+        <div class="overlay-panel-inner" style="align-items:center;text-align:center;">
+          <div class="overlay-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          </div>
+          <h2>Kuinka arvioisit palvelun?</h2>
+          <p>Palautteesi auttaa meitä parantamaan asiakaspalveluamme.</p>
+          <div class="satisfaction-stars" role="group" aria-label="Arvio 1-5">
+            ${[1,2,3,4,5].map(n=>`<button class="star-btn" data-r="${n}" aria-label="${n} tähteä"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></button>`).join('')}
+          </div>
+          <textarea class="form-input form-textarea satisfaction-comment" id="satisfaction-comment" placeholder="Lisäkommentteja... (valinnainen)" rows="2" style="width:100%;margin-top:.5rem;"></textarea>
+          <button class="btn btn-primary satisfaction-submit" id="btn-sat-submit" style="width:100%;margin-top:.5rem;">Lähetä arvio</button>
+          <button class="btn btn-secondary btn-sm" id="btn-sat-skip" style="margin-top:.25rem;">Ohita</button>
         </div>
-        <textarea class="form-input form-textarea satisfaction-comment" id="satisfaction-comment" placeholder="${t.satisfaction.comment_placeholder}" rows="2"></textarea>
-        <button class="btn btn-primary satisfaction-submit" id="btn-satisfaction-submit">${t.satisfaction.submit}</button>
       </div>
 
-      <!-- Input area -->
+      <!-- Footer -->
       <footer class="chat-footer">
-        <!-- Quick actions (shown only at start) -->
-        <div class="quick-actions" id="quick-actions" aria-label="Pikavalinnat">
-          ${QUICK_ACTIONS.map(a => `
-            <button class="quick-action-btn" data-action="${a.key}" aria-label="${a.label}">
-              <span class="quick-action-icon" aria-hidden="true">${a.icon}</span>
-              <span>${a.label}</span>
-            </button>
-          `).join('')}
-        </div>
-
-        <!-- File preview -->
+        <div class="footer-chips" id="footer-chips"></div>
         <div class="file-preview" id="file-preview" hidden></div>
-
-        <!-- Input row -->
         <div class="input-row">
-          <label class="icon-btn" for="file-input" aria-label="${t.input.attach}" title="${t.input.attach}">
+          <label class="icon-btn" for="file-input" aria-label="Lisää liite" title="Lisää liite" style="cursor:pointer;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" aria-label="${t.input.attach}" hidden>
+            <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx" hidden>
           </label>
-
           <div class="input-wrapper">
-            <textarea
-              class="chat-input"
-              id="chat-input"
-              placeholder="${t.input.placeholder}"
-              rows="1"
-              aria-label="Kirjoita viesti"
-              aria-multiline="true"
-              autocomplete="off"
-              autocorrect="on"
-              spellcheck="true"
-            ></textarea>
+            <textarea class="chat-input" id="chat-input" placeholder="Kirjoita viestisi..." rows="1" aria-label="Viesti" autocorrect="on" spellcheck="true"></textarea>
           </div>
-
-          <button class="icon-btn mic-btn" id="btn-mic" aria-label="${t.input.voice_start}" title="${t.input.voice_start}">
-            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+          <button class="icon-btn mic-btn" id="btn-mic" aria-label="Ääniviesti" title="Ääniviesti">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
           </button>
-
-          <button class="btn-send" id="btn-send" aria-label="${t.input.send}" disabled>
+          <button class="btn-send" id="btn-send" aria-label="Lähetä" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
         </div>
-
         <p class="chat-disclaimer">Voon asiakaspalvelu · AI-avustettu · <a href="https://voon.fi/tietosuoja" target="_blank" rel="noopener">Tietosuoja</a></p>
       </footer>
 
-    </div>
-    `;
+    </div>`;
 
-    // Cache DOM refs
-    this.dom = {
-      chatbot: this.root.querySelector('#voon-chatbot'),
-      messagesEl: this.root.querySelector('#chat-messages'),
-      messagesInner: this.root.querySelector('#messages-inner'),
-      inputEl: this.root.querySelector('#chat-input'),
-      sendBtn: this.root.querySelector('#btn-send'),
-      micBtn: this.root.querySelector('#btn-mic'),
-      newChatBtn: this.root.querySelector('#btn-new-chat'),
-      expandBtn: this.root.querySelector('#btn-expand'),
-      minimizeBtn: this.root.querySelector('#btn-minimize'),
-      voiceToggleBtn: this.root.querySelector('#btn-voice-toggle'),
-      voiceOverlay: this.root.querySelector('#voice-overlay'),
+    // Cache refs
+    this.$ = {
+      bot:         this.root.querySelector('#voon-chatbot'),
+      msgs:        this.root.querySelector('#chat-messages'),
+      inner:       this.root.querySelector('#messages-inner'),
+      input:       this.root.querySelector('#chat-input'),
+      send:        this.root.querySelector('#btn-send'),
+      mic:         this.root.querySelector('#btn-mic'),
+      btnNew:      this.root.querySelector('#btn-new'),
+      btnExp:      this.root.querySelector('#btn-expand'),
+      btnMin:      this.root.querySelector('#btn-min'),
+      btnTts:      this.root.querySelector('#btn-tts'),
+      voiceOverlay:this.root.querySelector('#voice-overlay'),
+      voiceOrb:    this.root.querySelector('#voice-orb'),
       voiceCanvas: this.root.querySelector('#voice-canvas'),
-      voiceStatusText: this.root.querySelector('#voice-status-text'),
-      voiceCancelBtn: this.root.querySelector('#btn-voice-cancel'),
-      quickActions: this.root.querySelector('#quick-actions'),
-      handoffPanel: this.root.querySelector('#handoff-panel'),
-      handoffForm: this.root.querySelector('#handoff-form'),
-      handoffCancelBtn: this.root.querySelector('#btn-handoff-cancel'),
-      satisfactionPanel: this.root.querySelector('#satisfaction-panel'),
-      satisfactionSubmitBtn: this.root.querySelector('#btn-satisfaction-submit'),
-      statusDot: this.root.querySelector('#status-dot'),
-      statusText: this.root.querySelector('#status-text'),
-      fileInput: this.root.querySelector('#file-input'),
+      voiceStat:   this.root.querySelector('#voice-status-text'),
+      voiceTrans:  this.root.querySelector('#voice-transcript'),
+      voiceCancel: this.root.querySelector('#btn-voice-cancel'),
+      handoff:     this.root.querySelector('#handoff-panel'),
+      hfForm:      this.root.querySelector('#handoff-form'),
+      hfCancel:    this.root.querySelector('#btn-hf-cancel'),
+      sat:         this.root.querySelector('#satisfaction-panel'),
+      satSubmit:   this.root.querySelector('#btn-sat-submit'),
+      satSkip:     this.root.querySelector('#btn-sat-skip'),
+      chips:       this.root.querySelector('#footer-chips'),
+      fileInput:   this.root.querySelector('#file-input'),
       filePreview: this.root.querySelector('#file-preview'),
     };
   }
 
   // ─── Events ──────────────────────────────────────────────────────────────
+  _bind() {
+    const $ = this.$;
 
-  _bindEvents() {
-    const { dom } = this;
-
-    // Send button
-    dom.sendBtn.addEventListener('click', () => this._handleSend());
-
-    // Input auto-resize & enable send
-    dom.inputEl.addEventListener('input', () => {
-      this._autoResize(dom.inputEl);
-      dom.sendBtn.disabled = !dom.inputEl.value.trim();
+    $.send.addEventListener('click', () => this._handleSend());
+    $.input.addEventListener('input', () => {
+      this._autoResize($.input);
+      $.send.disabled = !$.input.value.trim();
+    });
+    $.input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!$.send.disabled) this._handleSend(); }
     });
 
-    // Enter to send (Shift+Enter = newline)
-    dom.inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (!dom.sendBtn.disabled) this._handleSend();
-      }
+    $.mic.addEventListener('click', () => this._toggleVoice());
+    $.voiceOrb.addEventListener('click', () => this._stopVoice());
+    $.voiceCancel.addEventListener('click', () => this._stopVoice());
+
+    $.btnTts.addEventListener('click', () => {
+      this.prefs.tts = !this.prefs.tts; this._savePrefs();
+      $.btnTts.classList.toggle('active', this.prefs.tts);
+      $.btnTts.title = this.prefs.tts ? 'Puhesynteesi päällä' : 'Puhesynteesi pois';
     });
 
-    // Voice mic
-    dom.micBtn.addEventListener('click', () => this._toggleVoiceInput());
-    dom.voiceCancelBtn.addEventListener('click', () => this._stopVoiceInput());
+    $.btnNew.addEventListener('click', () => {
+      if (this.messages.length && confirm('Aloitetaanko uusi keskustelu?')) this._newChat();
+    });
+    $.btnExp.addEventListener('click', () => this._toggleExpand());
+    $.btnMin.addEventListener('click', () => this._toggleMin());
 
-    // Voice TTS toggle
-    dom.voiceToggleBtn.addEventListener('click', () => {
-      this.prefs.ttsEnabled = !this.prefs.ttsEnabled;
-      this._savePrefs();
-      dom.voiceToggleBtn.classList.toggle('active', this.prefs.ttsEnabled);
-      dom.voiceToggleBtn.title = this.prefs.ttsEnabled ? t.voice.voice_enabled : t.voice.voice_disabled;
-      dom.voiceToggleBtn.setAttribute('aria-label', dom.voiceToggleBtn.title);
+    $.hfCancel.addEventListener('click', () => { $.handoff.hidden = true; });
+    $.hfForm.addEventListener('submit', e => { e.preventDefault(); this._submitHandoff(); });
+
+    $.sat.querySelectorAll('.star-btn').forEach(b => b.addEventListener('click', () => this._selectStar(+b.dataset.r)));
+    $.satSubmit.addEventListener('click', () => this._submitSat());
+    $.satSkip.addEventListener('click', () => { $.sat.hidden = true; });
+
+    $.fileInput.addEventListener('change', e => { if (e.target.files[0]) this._handleFile(e.target.files[0]); e.target.value=''; });
+    $.input.addEventListener('paste', e => {
+      const item = [...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+      if (item) this._handleFile(item.getAsFile());
     });
 
-    // New chat
-    dom.newChatBtn.addEventListener('click', () => this._confirmNewChat());
-
-    // Expand / minimize
-    dom.expandBtn.addEventListener('click', () => this._toggleExpand());
-    dom.minimizeBtn.addEventListener('click', () => this._toggleMinimize());
-
-    // Quick actions
-    dom.quickActions.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action]');
-      if (btn) {
-        const msg = QUICK_MESSAGES[btn.dataset.action];
-        if (msg) this._sendUserMessage(msg);
-      }
+    // Footer chips delegation
+    $.chips.addEventListener('click', e => {
+      const btn = e.target.closest('[data-msg]');
+      if (btn) this._sendUser(btn.dataset.msg);
     });
 
-    // Handoff form
-    dom.handoffCancelBtn.addEventListener('click', () => this._hideHandoff());
-    dom.handoffForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this._submitHandoff();
-    });
-
-    // Satisfaction stars
-    dom.satisfactionPanel.querySelectorAll('.star-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const rating = parseInt(btn.dataset.rating);
-        this._selectRating(rating);
-      });
-    });
-    dom.satisfactionSubmitBtn.addEventListener('click', () => this._submitSatisfaction());
-
-    // File upload
-    dom.fileInput.addEventListener('change', (e) => this._handleFileUpload(e));
-
-    // Stop streaming on ESC
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.isStreaming) {
-        this._abortStream();
-      }
-    });
-
-    // Paste image support
-    dom.inputEl.addEventListener('paste', (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) this._processFile(file);
-        }
-      }
-    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && this.isStreaming) this._abort(); });
   }
 
-  // ─── Voice init ──────────────────────────────────────────────────────────
-
+  // ─── Voice ───────────────────────────────────────────────────────────────
   _initVoice() {
-    this.voiceEngine = new VoiceEngine({
-      lang: 'fi-FI',
-      ttsLang: 'fi-FI',
-      continuous: false,
-      interimResults: true,
+    this.voice = new VoiceEngine({
+      lang: 'fi-FI', ttsLang: 'fi-FI', continuous: false, interimResults: true,
+      silenceTimeout: 2200,
 
       onStart: () => {
-        this._showVoiceOverlay();
-        this.dom.micBtn.classList.add('listening');
-        this.dom.inputEl.placeholder = t.input.placeholder_voice;
+        this.$['voiceOverlay'].hidden = false;
+        this.$['mic'].classList.add('listening');
+        this.$['voiceTrans'].textContent = '';
+        this.$['voiceStat'].textContent = 'Kuuntelee...';
       },
-
       onEnd: () => {
-        this._hideVoiceOverlay();
-        this.dom.micBtn.classList.remove('listening');
-        this.dom.inputEl.placeholder = t.input.placeholder;
+        this.$['voiceOverlay'].hidden = true;
+        this.$['mic'].classList.remove('listening');
       },
-
-      onTranscript: (text, isFinal) => {
-        this.dom.inputEl.value = text;
-        this._autoResize(this.dom.inputEl);
-        this.dom.sendBtn.disabled = !text.trim();
-        if (isFinal && text.trim()) {
-          setTimeout(() => this._handleSend(), 300);
-        }
+      onTranscript: (text, final) => {
+        this.$['voiceTrans'].textContent = text;
+        if (final && text.trim()) setTimeout(() => this._sendUser(text.trim()), 300);
       },
-
-      onFinalTranscript: (text) => {
-        this.dom.voiceStatusText.textContent = text;
-      },
-
       onError: (code, msg) => {
-        this._hideVoiceOverlay();
-        this.dom.micBtn.classList.remove('listening');
-        this._showSystemMessage(msg, 'error');
+        this.$['voiceOverlay'].hidden = true;
+        this.$['mic'].classList.remove('listening');
+        this._showSystem(msg, 'error');
       },
-
-      onSpeakStart: () => {
-        this.dom.voiceToggleBtn.classList.add('speaking');
-      },
-
-      onSpeakEnd: () => {
-        this.dom.voiceToggleBtn.classList.remove('speaking');
-      },
-
-      onVolumeChange: (vol) => {
-        if (this.visualizer) this.visualizer.setVolume(vol);
-      },
+      onSpeakStart: () => { this.$['btnTts'].classList.add('speaking'); },
+      onSpeakEnd:   () => { this.$['btnTts'].classList.remove('speaking'); },
+      onVolumeChange: vol => { if (this.visualizer) this.visualizer.setVolume(vol); },
     });
 
-    // Init visualizer
-    this.visualizer = new AudioVisualizer(this.dom.voiceCanvas, {
-      color: 'rgba(3,105,161,0.4)',
-      activeColor: '#22d3ee',
+    this.visualizer = new AudioVisualizer(this.$['voiceCanvas'], {
+      color:'rgba(59,130,246,.35)', activeColor:'#60a5fa', barCount:22, barWidth:3,
     });
-
-    // Apply TTS pref
-    this.dom.voiceToggleBtn.classList.toggle('active', this.prefs.ttsEnabled);
+    this.$['btnTts'].classList.toggle('active', this.prefs.tts);
   }
 
-  // ─── Session & Welcome ───────────────────────────────────────────────────
+  async _toggleVoice() {
+    if (this.voice.isListening) { this._stopVoice(); return; }
+    const ok = await this.voice.startListening();
+    if (!ok) this._showSystem('Mikrofoni ei ole käytettävissä.', 'error');
+  }
+  _stopVoice() { this.voice.stopListening(); }
 
+  // ─── Welcome / Session ───────────────────────────────────────────────────
   _showWelcome() {
-    if (this.messages.length === 0) {
-      this._appendBotMessage(
-        `**${t.welcome.greeting}**\n\n${t.welcome.intro}`,
-        { isWelcome: true }
-      );
-    }
+    const el = document.createElement('div');
+    el.className = 'welcome-card';
+    el.innerHTML = `
+      <div class="welcome-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <h2>Hei! Olen Voon Assistentti 👋</h2>
+      <p>Olen tekoälyavustettu asiakaspalvelija. Autan sinua tilausten, laskutuksen, teknisten ongelmien ja tilin hallinnan asioissa.</p>
+      <div class="quick-categories">
+        ${CATEGORIES.map(c=>`
+          <button class="category-card" data-color="${c.color}" data-msg="${escHtml(c.msg)}" aria-label="${c.label}">
+            <div class="category-icon">${c.icon}</div>
+            <span class="category-label">${c.label}</span>
+            <span class="category-desc">${c.desc}</span>
+          </button>
+        `).join('')}
+      </div>`;
+
+    el.querySelectorAll('.category-card').forEach(b => {
+      b.addEventListener('click', () => {
+        this.currentCtx = b.dataset.color === 'blue' ? 'order' :
+                          b.dataset.color === 'purple' ? 'billing' :
+                          b.dataset.color === 'cyan' ? 'tech' : 'default';
+        this._sendUser(b.dataset.msg);
+      });
+    });
+
+    this.$['inner'].appendChild(el);
+    this._renderChips('default');
+    this._scrollBottom();
   }
 
   _restoreSession() {
     try {
-      const saved = sessionStorage.getItem(SESSION_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.messages?.length) {
-          this.messages = data.messages;
-          this.dom.quickActions.hidden = true;
-          data.messages.forEach(msg => {
-            if (msg.role === 'user') {
-              this._renderUserMessage(msg.content, msg.id, msg.timestamp);
-            } else if (msg.role === 'assistant') {
-              this._renderBotMessage(msg.content, msg.id, msg.timestamp);
-            }
-          });
-          this._scrollToBottom();
-        }
+      const d = JSON.parse(sessionStorage.getItem(SESSION_KEY));
+      if (d?.messages?.length) {
+        this.messages = d.messages;
+        this.$['chips'].innerHTML = '';
+        d.messages.forEach(m => {
+          if (m.role === 'user') this._renderUser(m.content, m.id, m.ts);
+          else if (m.role === 'assistant') this._renderBot(m.content, m.id, m.ts);
+        });
+        this._renderChips('default');
+        this._scrollBottom();
       }
     } catch { /* ignore */ }
   }
 
   _saveSession() {
-    try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ messages: this.messages.slice(-MAX_HISTORY) }));
-    } catch { /* ignore */ }
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ messages: this.messages.slice(-MAX_HISTORY) })); } catch {}
   }
 
-  _loadPrefs() {
-    try {
-      return JSON.parse(localStorage.getItem(PREFS_KEY)) || { ttsEnabled: false };
-    } catch { return { ttsEnabled: false }; }
+  _loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || { tts: false }; } catch { return { tts: false }; } }
+  _savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(this.prefs)); } catch {} }
+
+  _newChat() {
+    this.messages = [];
+    this.$['inner'].innerHTML = '';
+    this.$['chips'].innerHTML = '';
+    sessionStorage.removeItem(SESSION_KEY);
+    this.$['handoff'].hidden = true;
+    this.$['sat'].hidden = true;
+    this._showWelcome();
   }
 
-  _savePrefs() {
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify(this.prefs)); } catch { /* ignore */ }
+  // ─── Send / Stream ────────────────────────────────────────────────────────
+  _handleSend() {
+    const txt = this.$['input'].value.trim();
+    if (!txt || this.isStreaming) return;
+    this.$['input'].value = '';
+    this.$['send'].disabled = true;
+    this._autoResize(this.$['input']);
+    this._sendUser(txt);
   }
 
-  // ─── Send / Receive ──────────────────────────────────────────────────────
-
-  async _handleSend() {
-    const text = this.dom.inputEl.value.trim();
-    if (!text || this.isStreaming) return;
-
-    this._sendUserMessage(text);
-  }
-
-  _sendUserMessage(text) {
+  _sendUser(text) {
     if (this.isStreaming) return;
+    // Hide welcome card
+    const welcome = this.$['inner'].querySelector('.welcome-card');
+    if (welcome) welcome.style.display = 'none';
 
-    // Clear input
-    this.dom.inputEl.value = '';
-    this.dom.sendBtn.disabled = true;
-    this._autoResize(this.dom.inputEl);
-
-    // Hide quick actions
-    this.dom.quickActions.hidden = true;
-
-    // Add to history
-    const msgId = this._genId();
-    const timestamp = Date.now();
-    this.messages.push({ role: 'user', content: text, id: msgId, timestamp });
-    this._renderUserMessage(text, msgId, timestamp);
+    const id = genId(), ts = Date.now();
+    this.messages.push({ role:'user', content:text, id, ts });
+    this._renderUser(text, id, ts);
+    this.$['chips'].innerHTML = '';
     this._saveSession();
-
-    // Scroll
-    this._scrollToBottom();
-
-    // AI response
-    this._streamBotResponse();
+    this._scrollBottom();
+    this._streamBot();
   }
 
-  async _streamBotResponse() {
+  async _streamBot() {
     this.isStreaming = true;
-    this.abortController = new AbortController();
+    this.abortCtrl = new AbortController();
 
-    const botId = this._genId();
-    const timestamp = Date.now();
+    const typingEl = this._appendTyping();
+    const history = this.messages.slice(-MAX_HISTORY).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
 
-    // Add typing indicator
-    const typingEl = this._appendTypingIndicator();
-
-    // Prepare history for API (last N messages)
-    const history = this.messages.slice(-MAX_HISTORY).map(m => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content,
-    }));
-
-    let fullText = '';
-    let botMsgEl = null;
+    const botId = genId(), ts = Date.now();
+    let full = '';
+    let botEl = null;
 
     try {
       await sendMessage(
         history,
-        (chunk) => {
-          fullText += chunk;
-          if (!botMsgEl) {
+        chunk => {
+          full += chunk;
+          if (!botEl) {
             typingEl.remove();
-            botMsgEl = this._renderBotMessage('', botId, timestamp, true);
+            botEl = this._renderBot('', botId, ts, true);
           }
-          const contentEl = botMsgEl.querySelector('.msg-content');
-          if (contentEl) {
-            contentEl.innerHTML = '<p>' + renderMarkdown(fullText) + '</p>';
-          }
-          this._scrollToBottom();
+          const c = botEl.querySelector('.msg-content');
+          if (c) c.innerHTML = '<p>' + md(full) + '</p>';
+          this._scrollBottom();
         },
-        (full) => {
-          fullText = full;
-          // Finalize
-          if (botMsgEl) {
-            const contentEl = botMsgEl.querySelector('.msg-content');
-            if (contentEl) {
-              contentEl.innerHTML = '<p>' + renderMarkdown(full) + '</p>';
-            }
-            botMsgEl.classList.remove('streaming');
-            this._addMessageActions(botMsgEl, full);
+        finalText => {
+          full = finalText;
+          if (botEl) {
+            const c = botEl.querySelector('.msg-content');
+            if (c) c.innerHTML = '<p>' + md(full) + '</p>';
+            const cursor = botEl.querySelector('.streaming-cursor');
+            if (cursor) cursor.remove();
+            botEl.classList.remove('streaming');
+            this._addMsgActions(botEl, full);
           }
-          this.messages.push({ role: 'assistant', content: full, id: botId, timestamp });
+          this.messages.push({ role:'assistant', content:full, id:botId, ts });
           this._saveSession();
 
-          // TTS
-          if (this.prefs.ttsEnabled && full) {
-            this.voiceEngine.speak(full);
-          }
+          if (this.prefs.tts && full) this.voice.speak(full);
 
+          // Suggested replies after bot response
+          this._renderChips(this.currentCtx);
           this._checkEscalation(full);
-          this._scrollToBottom();
+          this._scrollBottom();
         },
-        this.abortController.signal,
+        this.abortCtrl.signal,
       );
-    } catch (err) {
+    } catch(err) {
       typingEl?.remove();
       if (err.name !== 'AbortError') {
-        let errMsg = t.states.error_generic;
-        if (err.message === 'API_KEY_MISSING') {
-          errMsg = 'API-avain puuttuu. Aseta VOON_CHATBOT_CONFIG.apiKey.';
-        } else if (err.message?.includes('API_ERROR')) {
-          errMsg = t.states.error_api;
-        } else if (err.message?.includes('Failed to fetch')) {
-          errMsg = t.states.error_network;
-        }
-        this._showSystemMessage(errMsg, 'error');
-        // Add retry option
-        this._appendRetryButton(() => this._streamBotResponse());
+        let msg = 'Jokin meni pieleen. Yritä uudelleen.';
+        if (err.message?.includes('503')) msg = 'Palvelu on tilapäisesti poissa käytöstä.';
+        else if (err.message?.includes('Failed to fetch')) msg = 'Yhteysvirhe. Tarkista internet.';
+        this._showSystem(msg, 'error');
+        const retry = document.createElement('div');
+        retry.className = 'retry-wrapper';
+        retry.innerHTML = `<button class="btn btn-secondary btn-sm">↺ Yritä uudelleen</button>`;
+        retry.querySelector('button').onclick = () => { retry.remove(); this._streamBot(); };
+        this.$['inner'].appendChild(retry);
+        this._scrollBottom();
       }
     } finally {
       this.isStreaming = false;
-      this.abortController = null;
+      this.abortCtrl = null;
     }
   }
 
-  _abortStream() {
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-  }
+  _abort() { this.abortCtrl?.abort(); }
 
-  // ─── Message Rendering ───────────────────────────────────────────────────
-
-  _renderUserMessage(text, id, timestamp) {
+  // ─── Rendering ────────────────────────────────────────────────────────────
+  _renderUser(text, id, ts) {
     const el = document.createElement('div');
-    el.className = 'msg msg-user';
-    el.dataset.id = id;
+    el.className = 'msg msg-user'; el.dataset.id = id;
     el.innerHTML = `
       <div class="msg-bubble">
-        <div class="msg-content"><p>${this._escapeHtml(text)}</p></div>
-        <time class="msg-time" datetime="${new Date(timestamp).toISOString()}">${formatTime(new Date(timestamp))}</time>
-      </div>
-    `;
-    this.dom.messagesInner.appendChild(el);
+        <div class="msg-bubble-inner">
+          <div class="msg-content"><p>${escHtml(text)}</p></div>
+        </div>
+        <div class="msg-meta">
+          <time class="msg-time">${ftime(new Date(ts))}</time>
+        </div>
+      </div>`;
+    this.$['inner'].appendChild(el);
     return el;
   }
 
-  _renderBotMessage(text, id, timestamp, streaming = false) {
+  _renderBot(text, id, ts, streaming = false) {
     const el = document.createElement('div');
-    el.className = 'msg msg-bot' + (streaming ? ' streaming' : '');
-    el.dataset.id = id;
+    el.className = 'msg msg-bot' + (streaming ? ' streaming' : ''); el.dataset.id = id;
     el.innerHTML = `
       <div class="bot-msg-avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#0F172A"/><path d="M6 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="10.5" r="1.2" fill="#22d3ee"/><circle cx="15" cy="10.5" r="1.2" fill="#22d3ee"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#1a2540"/><path d="M6 16c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" fill="#60a5fa"/><circle cx="15" cy="11" r="1.5" fill="#60a5fa"/></svg>
       </div>
       <div class="msg-bubble">
-        <div class="msg-content">${text ? '<p>' + renderMarkdown(text) + '</p>' : ''}</div>
-        ${streaming ? '<div class="streaming-cursor" aria-hidden="true"></div>' : ''}
-        <time class="msg-time" datetime="${new Date(timestamp).toISOString()}">${formatTime(new Date(timestamp))}</time>
-        ${!streaming ? `<div class="msg-actions" aria-label="Viestin toiminnot"></div>` : ''}
-      </div>
-    `;
-    this.dom.messagesInner.appendChild(el);
-    if (!streaming) this._addMessageActions(el, text);
+        <div class="msg-bubble-inner">
+          <div class="msg-content">${text ? '<p>'+md(text)+'</p>' : ''}${streaming ? '<span class="streaming-cursor" aria-hidden="true"></span>' : ''}</div>
+        </div>
+        <div class="msg-meta">
+          <time class="msg-time">${ftime(new Date(ts))}</time>
+        </div>
+        ${!streaming ? '<div class="msg-actions"></div>' : ''}
+      </div>`;
+    this.$['inner'].appendChild(el);
+    if (!streaming) this._addMsgActions(el, text);
     return el;
   }
 
-  _appendBotMessage(text, opts = {}) {
-    const id = this._genId();
-    const timestamp = Date.now();
-    const el = this._renderBotMessage(text, id, timestamp);
-    if (!opts.isWelcome) {
-      this.messages.push({ role: 'assistant', content: text, id, timestamp });
-      this._saveSession();
-    }
-    this._scrollToBottom();
-    return el;
-  }
-
-  _appendTypingIndicator() {
+  _appendTyping() {
     const el = document.createElement('div');
-    el.className = 'msg msg-bot msg-typing';
-    el.setAttribute('aria-label', t.states.typing);
+    el.className = 'msg msg-bot'; el.setAttribute('aria-label', 'Kirjoittaa...');
     el.innerHTML = `
       <div class="bot-msg-avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#0F172A"/><path d="M6 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#22d3ee" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="10.5" r="1.2" fill="#22d3ee"/><circle cx="15" cy="10.5" r="1.2" fill="#22d3ee"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#1a2540"/><path d="M6 16c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" fill="#60a5fa"/><circle cx="15" cy="11" r="1.5" fill="#60a5fa"/></svg>
       </div>
-      <div class="msg-bubble">
-        <div class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-      </div>
-    `;
-    this.dom.messagesInner.appendChild(el);
-    this._scrollToBottom();
+      <div class="msg-bubble"><div class="msg-bubble-inner"><div class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></div></div></div>`;
+    this.$['inner'].appendChild(el);
+    this._scrollBottom();
     return el;
   }
 
-  _addMessageActions(msgEl, text) {
-    const actionsEl = msgEl.querySelector('.msg-actions');
-    if (!actionsEl || !text) return;
-
-    actionsEl.innerHTML = `
-      <button class="msg-action-btn" data-action="copy" aria-label="${t.buttons.copy}" title="${t.buttons.copy}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-      </button>
-      <button class="msg-action-btn" data-action="speak" aria-label="${t.voice.read_aloud}" title="${t.voice.read_aloud}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
-      </button>
-      <button class="msg-action-btn" data-action="thumbup" aria-label="${t.buttons.thumbs_up}" title="${t.buttons.thumbs_up}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
-      </button>
-      <button class="msg-action-btn" data-action="thumbdown" aria-label="${t.buttons.thumbs_down}" title="${t.buttons.thumbs_down}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>
-      </button>
-    `;
-
-    actionsEl.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action]');
+  _addMsgActions(msgEl, text) {
+    const act = msgEl.querySelector('.msg-actions');
+    if (!act || !text) return;
+    act.innerHTML = `
+      <button class="msg-action-btn" data-a="copy"  title="Kopioi" aria-label="Kopioi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+      <button class="msg-action-btn" data-a="speak" title="Lue ääneen" aria-label="Lue ääneen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>
+      <button class="msg-action-btn" data-a="up"    title="Hyödyllinen" aria-label="Hyödyllinen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg></button>
+      <button class="msg-action-btn" data-a="down"  title="Ei hyödyllinen" aria-label="Ei hyödyllinen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg></button>`;
+    act.addEventListener('click', e => {
+      const btn = e.target.closest('[data-a]');
       if (!btn) return;
-      switch (btn.dataset.action) {
-        case 'copy': this._copyText(text, btn); break;
-        case 'speak': this._speakMessage(text, btn); break;
-        case 'thumbup': this._reactMessage(btn, 'up'); break;
-        case 'thumbdown': this._reactMessage(btn, 'down'); break;
-      }
+      if (btn.dataset.a === 'copy')  { navigator.clipboard.writeText(text).then(()=>{ btn.classList.add('active'); setTimeout(()=>btn.classList.remove('active'),2000); }); }
+      if (btn.dataset.a === 'speak') { this.voice.isSpeaking ? this.voice.stopSpeaking() : this.voice.speak(text); btn.classList.toggle('active'); }
+      if (btn.dataset.a === 'up')    btn.classList.toggle('active');
+      if (btn.dataset.a === 'down')  btn.classList.toggle('active');
     });
   }
 
-  _showSystemMessage(text, type = 'info') {
+  _showSystem(text, type = 'info') {
     const el = document.createElement('div');
-    el.className = `system-msg system-msg-${type}`;
-    el.setAttribute('role', 'status');
-    el.textContent = text;
-    this.dom.messagesInner.appendChild(el);
-    this._scrollToBottom();
-    if (type === 'info') {
-      setTimeout(() => el.remove(), 5000);
-    }
+    el.className = `system-msg system-msg-${type}`; el.role = 'status'; el.textContent = text;
+    this.$['inner'].appendChild(el);
+    this._scrollBottom();
+    if (type === 'info') setTimeout(() => el.remove(), 5000);
   }
 
-  _appendRetryButton(onRetry) {
-    const el = document.createElement('div');
-    el.className = 'retry-wrapper';
-    el.innerHTML = `<button class="btn btn-secondary btn-sm">${t.buttons.retry}</button>`;
-    el.querySelector('button').addEventListener('click', () => {
-      el.remove();
-      onRetry();
-    });
-    this.dom.messagesInner.appendChild(el);
-    this._scrollToBottom();
+  // ─── Suggested chips ──────────────────────────────────────────────────────
+  _renderChips(ctx) {
+    const replies = SUGGESTED_REPLIES[ctx] || SUGGESTED_REPLIES.default;
+    this.$['chips'].innerHTML = replies.map((r, i) =>
+      `<button class="footer-chip" data-msg="${escHtml(r.msg)}" style="animation-delay:${i*0.06}s">
+        ${r.icon ? r.icon : ''}${r.label}
+      </button>`
+    ).join('');
   }
 
-  // ─── Message Actions ─────────────────────────────────────────────────────
-
-  _copyText(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-      btn.classList.add('active');
-      setTimeout(() => btn.classList.remove('active'), 2000);
-      this._showSystemMessage(t.notifications.copied, 'info');
-    }).catch(() => {});
-  }
-
-  _speakMessage(text, btn) {
-    if (this.voiceEngine.isSpeaking) {
-      this.voiceEngine.stopSpeaking();
-      btn.classList.remove('active');
-    } else {
-      this.voiceEngine.speak(text);
-      btn.classList.add('active');
-      this.voiceEngine.options.onSpeakEnd = () => btn.classList.remove('active');
-    }
-  }
-
-  _reactMessage(btn, type) {
-    btn.classList.toggle('active');
-  }
-
-  // ─── Voice Input ─────────────────────────────────────────────────────────
-
-  async _toggleVoiceInput() {
-    if (this.voiceEngine.isListening) {
-      this._stopVoiceInput();
-    } else {
-      const started = await this.voiceEngine.startListening();
-      if (!started) {
-        this._showSystemMessage(t.voice.error_no_mic, 'error');
-      }
-    }
-  }
-
-  _stopVoiceInput() {
-    this.voiceEngine.stopListening();
-  }
-
-  _showVoiceOverlay() {
-    this.dom.voiceOverlay.hidden = false;
-    this.dom.voiceOverlay.removeAttribute('aria-hidden');
-    this.dom.voiceStatusText.textContent = t.voice.speak_now;
-  }
-
-  _hideVoiceOverlay() {
-    this.dom.voiceOverlay.hidden = true;
-    this.dom.voiceOverlay.setAttribute('aria-hidden', 'true');
-  }
-
-  // ─── Escalation / Handoff ─────────────────────────────────────────────────
-
+  // ─── Escalation ───────────────────────────────────────────────────────────
   _checkEscalation(text) {
-    const keywords = ['ihminen', 'virkailija', 'asiakaspalvelija', 'puhun ihmiselle', 'en halua puhua botin kanssa', 'agentti'];
-    const lower = text.toLowerCase();
-    if (keywords.some(k => lower.includes(k))) {
-      setTimeout(() => this._showHandoff(), 800);
+    const kw = ['ihminen','virkailija','asiakaspalvelija','en halua chatbot','puhun ihmiselle'];
+    if (kw.some(k => text.toLowerCase().includes(k))) {
+      setTimeout(() => { this.$['handoff'].hidden = false; }, 600);
     }
   }
 
-  _showHandoff() {
-    this.dom.handoffPanel.hidden = false;
-    this.dom.handoffPanel.querySelector('input')?.focus();
-  }
-
-  _hideHandoff() {
-    this.dom.handoffPanel.hidden = true;
-  }
-
+  // ─── Handoff ──────────────────────────────────────────────────────────────
   _submitHandoff() {
-    const name = this.root.querySelector('#handoff-name').value.trim();
-    const email = this.root.querySelector('#handoff-email').value.trim();
-    const msg = this.root.querySelector('#handoff-msg').value.trim();
-
-    if (!name || !email) {
-      this._showSystemMessage('Täytä nimi ja sähköposti.', 'error');
-      return;
-    }
-
-    // In production: POST to your backend
-    console.log('Handoff request:', { name, email, msg, history: this.messages });
-
-    this._hideHandoff();
-    const ticketId = ++this.ticketCounter;
-    this._showSystemMessage(`${t.ticket.created.replace('{id}', ticketId)} ${t.ticket.followup}`, 'info');
-    this._appendBotMessage(`Tukipyyntösi (#${ticketId}) on vastaanotettu. Otamme sinuun yhteyttä sähköpostiosoitteeseen **${email}** mahdollisimman pian. Kiitos kärsivällisyydestäsi!`);
+    const name  = this.root.querySelector('#hf-name').value.trim();
+    const email = this.root.querySelector('#hf-email').value.trim();
+    const msg   = this.root.querySelector('#hf-msg').value.trim();
+    if (!name || !email) { this._showSystem('Täytä nimi ja sähköposti.', 'error'); return; }
+    console.log('[voon handoff]', { name, email, msg });
+    this.$['handoff'].hidden = true;
+    const id = 1000 + Math.floor(Math.random()*9000);
+    this._renderBot(`Tukipyyntösi **#${id}** on vastaanotettu. Otamme sinuun yhteyttä osoitteeseen **${email}** pian. Kiitos kärsivällisyydestäsi!`, genId(), Date.now());
+    this._scrollBottom();
   }
 
   // ─── Satisfaction ─────────────────────────────────────────────────────────
-
-  showSatisfactionPanel() {
-    this.dom.satisfactionPanel.hidden = false;
+  showSurvey() { this.$['sat'].hidden = false; }
+  _selectStar(n) {
+    this.$['sat'].querySelectorAll('.star-btn').forEach((b,i) => b.classList.toggle('selected', i < n));
+    this.$['sat'].dataset.rating = n;
   }
-
-  _selectRating(rating) {
-    this.dom.satisfactionPanel.querySelectorAll('.star-btn').forEach((btn, i) => {
-      btn.classList.toggle('selected', i < rating);
-    });
-    this.dom.satisfactionPanel.dataset.rating = rating;
-  }
-
-  _submitSatisfaction() {
-    const rating = parseInt(this.dom.satisfactionPanel.dataset.rating || 0);
+  _submitSat() {
+    const rating = +this.$['sat'].dataset.rating || 0;
     const comment = this.root.querySelector('#satisfaction-comment').value.trim();
-
-    // In production: POST to your backend
-    console.log('Satisfaction:', { rating, comment });
-
-    this.dom.satisfactionPanel.hidden = true;
-    this._showSystemMessage(t.satisfaction.submitted, 'info');
+    console.log('[voon satisfaction]', { rating, comment });
+    this.$['sat'].hidden = true;
+    this._showSystem('Kiitos palautteestasi! 🙏', 'info');
   }
 
-  // ─── File Upload ─────────────────────────────────────────────────────────
-
-  _handleFileUpload(e) {
-    const file = e.target.files?.[0];
-    if (file) this._processFile(file);
-    e.target.value = '';
-  }
-
-  _processFile(file) {
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      this._showSystemMessage(t.upload.error_size, 'error');
-      return;
-    }
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowedTypes.includes(file.type)) {
-      this._showSystemMessage(t.upload.error_type, 'error');
-      return;
-    }
-
+  // ─── File upload ──────────────────────────────────────────────────────────
+  _handleFile(file) {
+    if (file.size > 10*1024*1024) { this._showSystem('Tiedosto on liian suuri (max 10 MB).','error'); return; }
+    const allowed = ['image/jpeg','image/png','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowed.includes(file.type)) { this._showSystem('Tiedostotyyppi ei ole tuettu.','error'); return; }
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const preview = this.dom.filePreview;
-      preview.hidden = false;
-      const isImage = file.type.startsWith('image/');
-      preview.innerHTML = `
-        <div class="file-preview-item">
-          ${isImage ? `<img src="${e.target.result}" alt="${this._escapeHtml(file.name)}" class="file-preview-img">` :
-            `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>`}
-          <span class="file-name">${this._escapeHtml(file.name)}</span>
-          <button class="file-remove" aria-label="Poista liite">&times;</button>
-        </div>
-      `;
-      preview.querySelector('.file-remove').addEventListener('click', () => {
-        preview.hidden = true;
-        preview.innerHTML = '';
-      });
-
-      // Send as user message with attachment info
-      this._sendUserMessage(`[Liite: ${file.name}]`);
-      preview.hidden = true;
-      preview.innerHTML = '';
+    reader.onload = e => {
+      const fp = this.$['filePreview'];
+      fp.hidden = false;
+      const isImg = file.type.startsWith('image/');
+      fp.innerHTML = `<div class="file-preview-item">
+        ${isImg ? `<img src="${e.target.result}" alt="${escHtml(file.name)}" class="file-preview-img">` : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="36" height="36"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`}
+        <span class="file-name">${escHtml(file.name)}</span>
+        <button class="file-remove" aria-label="Poista">×</button>
+      </div>`;
+      fp.querySelector('.file-remove').onclick = () => { fp.hidden = true; fp.innerHTML = ''; };
+      this._sendUser(`[Liite: ${file.name}]`);
+      fp.hidden = true; fp.innerHTML = '';
     };
     reader.readAsDataURL(file);
   }
 
-  // ─── UI Helpers ───────────────────────────────────────────────────────────
+  // ─── UI helpers ───────────────────────────────────────────────────────────
+  _autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,140)+'px'; }
+  _scrollBottom() { this.$['msgs'].scrollTo({ top:this.$['msgs'].scrollHeight, behavior:'smooth' }); }
+  _toggleExpand() { this.isExp=!this.isExp; this.$['bot'].classList.toggle('expanded',this.isExp); }
+  _toggleMin()    { this.isMin=!this.isMin; this.$['bot'].classList.toggle('minimized',this.isMin); }
 
-  _autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-  }
-
-  _scrollToBottom() {
-    const el = this.dom.messagesEl;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }
-
-  _toggleExpand() {
-    this.isExpanded = !this.isExpanded;
-    this.dom.chatbot.classList.toggle('expanded', this.isExpanded);
-    const icon = this.dom.expandBtn;
-    icon.title = this.isExpanded ? t.buttons.minimize : t.buttons.expand;
-    icon.setAttribute('aria-label', icon.title);
-  }
-
-  _toggleMinimize() {
-    this.isMinimized = !this.isMinimized;
-    this.dom.chatbot.classList.toggle('minimized', this.isMinimized);
-    this.dom.minimizeBtn.setAttribute('aria-label', this.isMinimized ? 'Avaa chat' : t.buttons.minimize);
-    if (!this.isMinimized) this.unreadCount = 0;
-  }
-
-  _confirmNewChat() {
-    if (this.messages.length === 0) return;
-    if (confirm('Aloitetaanko uusi keskustelu? Nykyinen historia poistetaan.')) {
-      this._newChat();
-    }
-  }
-
-  _newChat() {
-    this.messages = [];
-    this.dom.messagesInner.innerHTML = '';
-    this.dom.quickActions.hidden = false;
-    sessionStorage.removeItem(SESSION_KEY);
-    this._showWelcome();
-    this.dom.satisfactionPanel.hidden = true;
-    this.dom.handoffPanel.hidden = true;
-  }
-
-  _genId() {
-    return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  }
-
-  _escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  // ─── Public API ───────────────────────────────────────────────────────────
-
-  /** Programmatically send a message */
-  send(text) { this._sendUserMessage(text); }
-
-  /** Show handoff panel */
-  requestHuman() { this._showHandoff(); }
-
-  /** Show satisfaction survey */
-  showSurvey() { this.showSatisfactionPanel(); }
-
-  /** Update API config at runtime */
-  setConfig(config) {
-    window.VOON_CHATBOT_CONFIG = { ...(window.VOON_CHATBOT_CONFIG || {}), ...config };
-  }
-
-  /** Destroy instance */
-  destroy() {
-    this.voiceEngine?.destroy();
-    this.visualizer?.destroy();
-    this.root.innerHTML = '';
-  }
+  send(text) { this._sendUser(text); }
+  destroy()  { this.voice?.destroy(); this.visualizer?.destroy(); this.root.innerHTML=''; }
 }

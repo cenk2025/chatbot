@@ -4,41 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Voon.fi asiakaspalvelu – Tekoälyavustettu chat">
-  <meta name="theme-color" content="#0F172A">
+  <meta name="theme-color" content="#070b14">
   <title>Voon.fi Asiakaspalvelu</title>
-
-  <!-- Konfiguraatio: API-avain ja system prompt ovat Vercel-palvelimella, ei tarayicissa -->
-
+  <!-- API-avain ja system prompt ovat Vercel-palvelimella (api/chat.js) -->
   <link rel="stylesheet" href="styles/chatbot.css">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230F172A'/><path d='M20 65c0-16.569 13.431-30 30-30s30 13.431 30 30' stroke='%2322d3ee' stroke-width='6' stroke-linecap='round' fill='none'/><circle cx='35' cy='42' r='5' fill='%2322d3ee'/><circle cx='65' cy='42' r='5' fill='%2322d3ee'/></svg>">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%233b82f6'/><stop offset='1' stop-color='%238b5cf6'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M22 65c0-15.464 12.536-28 28-28s28 12.536 28 28' stroke='white' stroke-width='5' stroke-linecap='round' fill='none'/><circle cx='37' cy='44' r='5' fill='white'/><circle cx='63' cy='44' r='5' fill='white'/></svg>">
 </head>
 <body class="chatbot-standalone">
 
-  <!-- Standalone chatbot container -->
-  <div id="voon-chatbot-root" aria-label="Voon.fi asiakaspalvelu chatbot"></div>
+  <div id="voon-chatbot-root" aria-label="Voon.fi asiakaspalvelu"></div>
 
   <script type="module">
     import { VoonChatbot } from './scripts/chatbot.js';
 
-    // Initialize chatbot
     const chatbot = new VoonChatbot('#voon-chatbot-root');
-
-    // Expose for external control
     window.VoonChat = chatbot;
 
-    // Example: show survey after 10 minutes of inactivity
-    let inactivityTimer;
-    function resetInactivity() {
-      clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(() => {
-        if (chatbot.messages.length > 2) {
-          chatbot.showSurvey();
-        }
-      }, 10 * 60 * 1000);
-    }
-    document.addEventListener('mousemove', resetInactivity, { passive: true });
-    document.addEventListener('keydown', resetInactivity, { passive: true });
-    resetInactivity();
+    // Memnuniyet anketi 10 min hareketsizlikte
+    let timer;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (chatbot.messages.length > 2) chatbot.showSurvey(); }, 10*60*1000);
+    };
+    document.addEventListener('mousemove', reset, { passive:true });
+    document.addEventListener('keydown', reset, { passive:true });
+    reset();
   </script>
 
 </body>
