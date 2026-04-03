@@ -7,6 +7,15 @@ import { sendMessage } from './api.js';
 import { VoiceEngine, AudioVisualizer } from './voice.js';
 import { fi as t } from './i18n.js';
 
+// ─── Voon Logo SVG ─────────────────────────────────────────────────────────
+const VOON_LOGO = `<svg viewBox="0 0 100 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2 4 L50 76 L98 4" stroke="white" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>`;
+
+const VOON_LOGO_SMALL = `<svg viewBox="0 0 100 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2 4 L50 76 L98 4" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>`;
+
 // ─── Constants ─────────────────────────────────────────────────────────────
 const MAX_HISTORY = 40;
 const SESSION_KEY  = 'voon_chat_v2';
@@ -117,16 +126,7 @@ export class VoonChatbot {
         <div class="chat-header-left">
           <div class="bot-avatar" aria-hidden="true">
             <div class="bot-avatar-ring"></div>
-            <div class="bot-avatar-inner">
-              <svg viewBox="0 0 32 32" fill="none">
-                <path d="M8 21c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round"/>
-                <circle cx="12" cy="14" r="2" fill="#60a5fa"/>
-                <circle cx="20" cy="14" r="2" fill="#60a5fa"/>
-                <rect x="14" y="6" width="4" height="4" rx="2" fill="#3b82f6"/>
-                <line x1="16" y1="6" x2="16" y2="4" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
-                <circle cx="16" cy="3.5" r="1.2" fill="#60a5fa"/>
-              </svg>
-            </div>
+            <div class="bot-avatar-inner">${VOON_LOGO}</div>
           </div>
           <div>
             <h1 class="chat-title">Voon Asiakaspalvelu</h1>
@@ -367,9 +367,7 @@ export class VoonChatbot {
     const el = document.createElement('div');
     el.className = 'welcome-card';
     el.innerHTML = `
-      <div class="welcome-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-      </div>
+      <div class="welcome-logo">${VOON_LOGO}</div>
       <h2>Hei! Olen Voon Assistentti 👋</h2>
       <p>Olen tekoälyavustettu asiakaspalvelija. Autan sinua tilausten, laskutuksen, teknisten ongelmien ja tilin hallinnan asioissa.</p>
       <div class="quick-categories">
@@ -543,9 +541,7 @@ export class VoonChatbot {
     const el = document.createElement('div');
     el.className = 'msg msg-bot' + (streaming ? ' streaming' : ''); el.dataset.id = id;
     el.innerHTML = `
-      <div class="bot-msg-avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#1a2540"/><path d="M6 16c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" fill="#60a5fa"/><circle cx="15" cy="11" r="1.5" fill="#60a5fa"/></svg>
-      </div>
+      <div class="bot-msg-avatar" aria-hidden="true">${VOON_LOGO_SMALL}</div>
       <div class="msg-bubble">
         <div class="msg-bubble-inner">
           <div class="msg-content">${text ? '<p>'+md(text)+'</p>' : ''}${streaming ? '<span class="streaming-cursor" aria-hidden="true"></span>' : ''}</div>
@@ -564,9 +560,7 @@ export class VoonChatbot {
     const el = document.createElement('div');
     el.className = 'msg msg-bot'; el.setAttribute('aria-label', 'Kirjoittaa...');
     el.innerHTML = `
-      <div class="bot-msg-avatar" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#1a2540"/><path d="M6 16c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="11" r="1.5" fill="#60a5fa"/><circle cx="15" cy="11" r="1.5" fill="#60a5fa"/></svg>
-      </div>
+      <div class="bot-msg-avatar" aria-hidden="true">${VOON_LOGO_SMALL}</div>
       <div class="msg-bubble"><div class="msg-bubble-inner"><div class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></div></div></div>`;
     this.$['inner'].appendChild(el);
     this._scrollBottom();
